@@ -282,14 +282,3 @@ def deleteFileFromS3(bucket, remote_file_path):
         print(f"File '{remote_file_path}' eliminato con successo dal bucket S3 {bucket}.")
     except subprocess.CalledProcessError as e:
         print(f"Errore durante l'eliminazione del file da S3: {e}")
-
-#if local_folder_path:
-#    mylib.getFileNamesAndDates(files_to_download, recent_objects, file_list, date_list)
-#    for i, item in enumerate(file_list):
-#        date_folder = mylib.create_date_folder(date_list[i])
-#        download_path = os.path.join(local_folder_path, date_folder, file_list[i])  # Percorso locale per il download
-#        os.makedirs(os.path.dirname(download_path), exist_ok=True)  # Crea le cartelle se non esistono
-#        print(f"Download file {i} : {file_list[i]} in {download_path}")
-#        mylib.downloadFileFromS3(selected_bucket, file_list[i], download_path, s3)
-#else:
-#    print("Nessun percorso selezionato. Il download è stato annullato.")
