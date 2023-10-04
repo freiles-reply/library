@@ -66,7 +66,7 @@ def createHomeDirPath(name):
         time.sleep(3)
         homeDir = filedialog.askdirectory(title="Seleziona la tua Home Directory (ES. windows: C:\\Users\\NomeUtente ; Linux/MacOS /home/NomeUtente)")
         home = open(name, "w")
-        home.write(homeDir)
+        home.write(homeDir + "\n")
         home.close()
     else:
         with open(name, "r") as home:
