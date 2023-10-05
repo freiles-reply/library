@@ -52,7 +52,7 @@ def listAndDeleteFiles(file_pattern, secs, current_time):
             # Confronta la data/ora attuale con la data/ora del file + 1 ora
             if (file_datetime + timedelta(seconds=secs)) < current_time:
                 os.remove(filename)
-                print(f"File '{filename}' rimosso.")
+                print(f"\nFile '{filename}' rimosso.\n")
 
 # Seleziona il path della home directory dove solitamente risiede la folder .aws che ospita le credenziali temporanee
 def createHomeDirPath(name):
@@ -62,7 +62,7 @@ def createHomeDirPath(name):
         root.withdraw()
 
         # Apre la finestra di dialogo per selezionare un percorso (in questo caso la home Dir)
-        print("SELEZIONA LA TUA HOME DIRECTORY PER IL SALVATAGGIO DELLE CREDENZIALI (ES. windows: C:\\Users\\NomeUtente ; Linux/MacOS /home/NomeUtente)")
+        print("\nSELEZIONA LA TUA HOME DIRECTORY PER IL SALVATAGGIO DELLE CREDENZIALI (ES. windows: C:\\Users\\NomeUtente ; Linux/MacOS /home/NomeUtente)\n")
         time.sleep(3)
         homeDir = filedialog.askdirectory(title="Seleziona la tua Home Directory (ES. windows: C:\\Users\\NomeUtente ; Linux/MacOS /home/NomeUtente)")
         home = open(name, "w")
@@ -83,12 +83,12 @@ def enumerateCredentialFiles(defaultRole):
     file_list = [file for file in os.listdir() if file.startswith(defaultRole)]
     if file_list :
         # Stampa l'elenco numerato dei file
-        print("Elenco dei file disponibili:")
+        print("\nElenco dei file disponibili:\n")
         for index, file_name in enumerate(file_list, start=1):
             print(f"{index}. {file_name}")
 
         # Chiedi all'utente di selezionare un numero
-        choice = input("Seleziona un numero (0 per uscire): ")
+        choice = input("\nSeleziona un numero (0 per uscire): ")
 
         # Verifica la scelta dell'utente
         if choice.isdigit():
@@ -134,18 +134,18 @@ def enumerateCredentialFiles(defaultRole):
                 return selected_file, aws_access_key_id, aws_secret_access_key, aws_session_token, aws_security_token
             
             elif choice == 0:
-                print("Hai scelto di proseguire senza utilizzare le credenziali già disponibili.")
+                print("\nHai scelto di proseguire senza utilizzare le credenziali già disponibili.\n")
                 return None
             else:
-                print("Scelta non valida, si procederà con nuove credenziali temporanee")
+                print("\nScelta non valida, si procederà con nuove credenziali temporanee.n")
                 return None
         else:
-            print("Input non valido. Si procederà con nuove credenziali temporanee.")
+            print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
 
 def getFileListSortedByDate(objects):
     # Chiedi all'utente il numero di giorni da considerare
-    num_days = int(input("Inserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: "))
+    num_days = int(input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: "))
 
     # Calcola la data di num_days fa
     num_days_ago = datetime.now(timezone.utc) - timedelta(days=num_days)
@@ -155,25 +155,25 @@ def getFileListSortedByDate(objects):
     recent_objects.sort(key=lambda x: x['LastModified'], reverse=True)
 
     # Stampa l'elenco dei file recenti enumerati
-    print(f"File nella cartella 'dev' degli ultimi {num_days} giorni (dal più recente al più vecchio):")
+    print(f"\nFile nella cartella 'dev' degli ultimi {num_days} giorni (dal più recente al più vecchio):\n")
     for i, obj in enumerate(recent_objects, 1):
-        print(f"{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}")
+        print(f"\n{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}\n")
     return recent_objects, num_days, i
 
 def getEnumFileListSortedByDate(recent_objects):
     # Chiedi all'utente quali file scaricare
-    files = input("Inserisci il/i numero/i del/dei file/s da elaborare [separati da virgola. (digitare ALL per selezionare tutti i files)]: ")
+    files = input("\nInserisci il/i numero/i del/dei file/s da elaborare [separati da virgola. (digitare ALL per selezionare tutti i files)]: ")
 
     if not files:
-        print("Nessun file selezionato.")
+        print("\nNessun file selezionato.\n")
         exit(1)
     elif files == 'ALL':
-        ans = input('Attenzione!!! saranno selezionati tutti i file, SEI SICURO DI VOLER PROSEGUIRE? (YES per accettare): ')
+        ans = input('\nAttenzione!!! saranno selezionati tutti i file, SEI SICURO DI VOLER PROSEGUIRE? (YES per accettare): ')
         if ans =='YES':
             files = list(range(1, len(recent_objects) + 1))
-            print(f'Tutti i file verranno selezionati! {files}')
+            print(f'\nTutti i file verranno selezionati! {files}\n')
         else:
-            print('Non è stata confermata la selezione di tutti i file il programma terminerà')
+            print('\nNon è stata confermata la selezione di tutti i file il programma terminerà\n')
             exit(1)
     else:
         files = [int(num.strip()) for num in files.split(',') if num.strip().isdigit()]
@@ -190,7 +190,7 @@ def getFileNamesAndDates(files, recent_objects, path_list, name_list, date_list)
             name_list.append(file_name)
             date_list.append(file_date)
         else:
-            print(f"Numero '{file_number}' non valido. Ignorato.")
+            print(f"\nNumero '{file_number}' non valido. Ignorato.\n")
             exit(1)
 
 def getTempCredentials(homeDir, configJson):
@@ -199,7 +199,7 @@ def getTempCredentials(homeDir, configJson):
     os.system(commandString)
     if not os.path.exists(homeDir+ "/.aws"):
         os.remove(homeDir)
-        print("non riesco a trovare la foder '.aws' nel percorso definito nel file HomeDir. Il file HomeDir verrà cancellato.")
+        print("\nNon riesco a trovare la folder '.aws' nel percorso definito nel file HomeDir. Il file HomeDir verrà cancellato.\n")
         exit(1)
     tempCredentials = homeDir+ "/.aws/credentials"
     configAWS = homeDir+ "/.aws/config"
@@ -238,15 +238,15 @@ def saveTempCredentials(tempCredentials, role_arn, rows):
                 #i+=1
             f.close()
     else:
-        print("Impossibile reperire le informazioni di ruolo, Riprova ad eseguire lo script!")
+        print("\nImpossibile reperire le informazioni di ruolo, Riprova ad eseguire lo script!\n")
 
 def downloadFileFromS3(bucket, key, local_path, s3_client):
     # Scarica il file da S3
     try:
         s3_client.download_file(bucket, key, local_path)
-        print(f"File '{key}' scaricato con successo in '{local_path}'")
+        print(f"\nFile '{key}' scaricato con successo in '{local_path}'\n")
     except Exception as e:
-        print(f"Errore durante il download del file '{key}': {str(e)}")
+        print(f"\nErrore durante il download del file '{key}': {str(e)}\n")
 
 def uploadFileToS3(local_files, bucket, subfolder):
     import subprocess
@@ -254,15 +254,15 @@ def uploadFileToS3(local_files, bucket, subfolder):
     for local_file in local_files:
         remote_file = os.path.basename(local_file)
         # Specifica il percorso del bucket S3 di destinazione
-        bucket_s3_dest = f's3://{bucket}/{subfolder}/{remote_file}'
+        bucket_s3_dest = f'\ns3://{bucket}/{subfolder}/{remote_file}\n'
         
         # Esegui il comando aws s3 cp utilizzando subprocess
         comando = ['aws', 's3', 'cp', local_file, bucket_s3_dest]
         try:
             subprocess.run(comando, check=True)
-            print(f"File '{local_file}' uploadato con successo su S3.")
+            print(f"\nFile '{local_file}' uploadato con successo su S3.\n")
         except Exception as e:
-            print(f"Errore durante l'upload del file su S3: {str(e)}")
+            print(f"\nErrore durante l'upload del file su S3: {str(e)}\n")
 
 def deleteFileFromS3(bucket, remote_file_path):
     import subprocess
@@ -273,32 +273,32 @@ def deleteFileFromS3(bucket, remote_file_path):
         return
 
     # Specifica il percorso completo del file da eliminare, incluso il bucket
-    bucket_s3_dest = f's3://{bucket}/{remote_file_path}'
+    bucket_s3_dest = f'\ns3://{bucket}/{remote_file_path}\n'
 
     # Esegui il comando aws s3 rm utilizzando subprocess
     comando = ['aws', 's3', 'rm', bucket_s3_dest]
     try:
         subprocess.run(comando, check=True)
-        print(f"File '{remote_file_path}' eliminato con successo dal bucket S3 {bucket}.")
+        print(f"\nFile '{remote_file_path}' eliminato con successo dal bucket S3 {bucket}.\n")
     except subprocess.CalledProcessError as e:
-        print(f"Errore durante l'eliminazione del file da S3: {e}")
+        print(f"\nErrore durante l'eliminazione del file da S3: {e}\n")
 
 def enumarateConfigElements(conf):
     for index, role in enumerate(conf):
-        print(f"{index}: {role['name']} - {role['comment']}")
+        print(f"\n{index}: {role['name']} - {role['comment']}\n")
     # Chiedi all'utente di inserire il numero desiderato
     while True:
         try:
-            choice = int(input("Inserisci il numero dell'opzione desiderata: "))
+            choice = int(input("\nInserisci il numero dell'opzione desiderata: "))
             if 0 <= choice <= len(conf):
                 serialId = conf[choice]
-                print(f"Hai scelto: {serialId['name']} - {serialId['comment']}")
+                print(f"\n\nHai scelto: {serialId['name']} - {serialId['comment']}\n\n")
                 Id = choice  # ID basato su zero
                 break
             else:
-                print("Scelta non valida. Inserisci un numero valido.")
+                print("\nScelta non valida. Inserisci un numero valido.\n")
                 exit(1)
         except ValueError:
-            print("Inserisci un numero valido.")
+            print("\nInserisci un numero valido.\n")
             exit(1)
     return int(Id)
