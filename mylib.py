@@ -285,7 +285,7 @@ def deleteFileFromS3(bucket, remote_file_path):
 
 def enumarateConfigElements(conf):
     for index, role in enumerate(conf):
-        print(f"\n{index}: {role['name']} - {role['comment']}\n")
+        print(f"\n{index}: {role['name']} - {role['comment']}")
     # Chiedi all'utente di inserire il numero desiderato
     while True:
         try:
