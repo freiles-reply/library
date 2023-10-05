@@ -15,9 +15,9 @@ def create_date_folder(date):
     return date.strftime("%Y%m%d")
 
 # Salva la configurazione in un file JSON
-def save_config(config_mem, config_json):
-    with open(config_json, 'w') as config_file:
-        json.dump(config_mem, config_file, indent=4)
+def save_config(config_var, config_file):
+    with open(config_file, 'w') as config:
+        json.dump(config_var, config, indent=4)
 
 # Carica la configurazione da un file JSON
 def load_config(config_json):
