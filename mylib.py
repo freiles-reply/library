@@ -282,3 +282,23 @@ def deleteFileFromS3(bucket, remote_file_path):
         print(f"File '{remote_file_path}' eliminato con successo dal bucket S3 {bucket}.")
     except subprocess.CalledProcessError as e:
         print(f"Errore durante l'eliminazione del file da S3: {e}")
+
+def enumarateConfigElements(conf):
+    for index, role in enumerate(conf):
+        print(f"{index}: {role['name']} - {role['comment']}")
+    # Chiedi all'utente di inserire il numero del ruolo desiderato
+    while True:
+        try:
+            choice = int(input("Inserisci il numero dell'opzione desiderata: "))
+            if 0 <= choice <= len(conf):
+                serialId = conf[choice]
+                print(f"Hai scelto: {serialId['name']} - {serialId['comment']}")
+                Id = choice  # ID basato su zero
+                break
+            else:
+                print("Scelta non valida. Inserisci un numero valido.")
+                exit(1)
+        except ValueError:
+            print("Inserisci un numero valido.")
+            exit(1)
+    return Id
