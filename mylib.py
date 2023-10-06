@@ -159,9 +159,13 @@ def getFileListSortedByDate(objects, filter_argument):
 
     recent_objects.sort(key=lambda x: x['LastModified'], reverse=True)
 
+    # Inizializza la variabile i a 0
+    i = 0
+
     # Stampa l'elenco dei file recenti enumerati
     print(f"\nFile nella cartella 'dev' degli ultimi {num_days} giorni (dal più recente al più vecchio):\n")
-    for i, obj in enumerate(recent_objects, 1):
+    for obj in recent_objects:
+        i += 1
         print(f"\n{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}\n")
     return recent_objects, num_days, i
 
