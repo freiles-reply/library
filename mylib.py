@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import tkinter as tk
 from tkinter import filedialog
 import json
+import fnmatch
 
 
 # Crea una cartella con il formato 'YYYYMMDD'
@@ -155,7 +156,10 @@ def getFileListSortedByDate(objects, filter_argument):
 
     # Applica il filtro se l'argomento di filtro è specificato
     if filter_argument is not None:
-        recent_objects = [obj for obj in recent_objects if obj.get('FilterKey') == filter_argument]
+        filter_argument = filter_argument.strip()  # Rimuovi spazi extra dall'argomento
+    
+        # Filtra gli oggetti in base all'argomento con caratteri jolly
+        recent_objects = [obj for obj in recent_objects if fnmatch.fnmatchcase(obj.get('FilterKey', ''), filter_argument)]
 
     recent_objects.sort(key=lambda x: x['LastModified'], reverse=True)
 
