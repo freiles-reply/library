@@ -143,7 +143,7 @@ def enumerateCredentialFiles(defaultRole):
             print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
 
-def getFileListSortedByDate(objects):
+def getFileListSortedByDate(objects, filter_argument):
     # Chiedi all'utente il numero di giorni da considerare
     num_days = int(input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: "))
 
@@ -152,6 +152,11 @@ def getFileListSortedByDate(objects):
 
     # Filtra e ordina gli oggetti in base alla data
     recent_objects = [obj for obj in objects.get('Contents', []) if obj['LastModified'].replace(tzinfo=timezone.utc) >= num_days_ago]
+
+    # Applica il filtro se l'argomento di filtro è specificato
+    if filter_argument is not None:
+        recent_objects = [obj for obj in recent_objects if obj.get('FilterKey') == filter_argument]
+
     recent_objects.sort(key=lambda x: x['LastModified'], reverse=True)
 
     # Stampa l'elenco dei file recenti enumerati
