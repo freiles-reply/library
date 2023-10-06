@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 import tkinter as tk
 from tkinter import filedialog
 import json
-import fnmatch
 
 
 # Crea una cartella con il formato 'YYYYMMDD'
@@ -143,37 +142,77 @@ def enumerateCredentialFiles(defaultRole):
         else:
             print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
+        
+def filterFileList(objects):
+    # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
+    filter = input('\ninserisci il filtro desiderato: ')  # Sostituisci con il filtro desiderato
 
-def getFileListSortedByDate(objects, filter_argument):
+    # Filtra gli oggetti in base al filtro
+    filtered_objects = [obj for obj in objects.get('Contents', []) if filter in obj['Key']]
+    return filtered_objects
+
+
+def getFileListSortedByDate(objects, folderKey):
+
+    filtered_objects = filterFileList(objects)
+
     # Chiedi all'utente il numero di giorni da considerare
-    num_days = int(input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: "))
+    num_days = input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: ")
+
+    if num_days.strip() == "":
+        num_days = "10"
+        print(f"\nVerranno visualizzati i file recenti risalenti agli ultimi {num_days} giorni...")
+
+    num_days = int(num_days)
 
     # Calcola la data di num_days fa
     num_days_ago = datetime.now(timezone.utc) - timedelta(days=num_days)
 
     # Filtra e ordina gli oggetti in base alla data
-    recent_objects = [obj for obj in objects.get('Contents', []) if obj['LastModified'].replace(tzinfo=timezone.utc) >= num_days_ago]
-
-    # Applica il filtro se l'argomento di filtro è specificato
-    if filter_argument is not None:
-        filter_argument = filter_argument.strip()  # Rimuovi spazi extra dall'argomento
-    
-        # Filtra gli oggetti in base all'argomento con caratteri jolly
-        recent_objects = [obj for obj in recent_objects if fnmatch.fnmatchcase(obj.get('FilterKey', ''), filter_argument)]
-
+    recent_objects = [obj for obj in filtered_objects if obj['LastModified'].replace(tzinfo=timezone.utc) >= num_days_ago]
+        
     recent_objects.sort(key=lambda x: x['LastModified'], reverse=True)
 
     # Inizializza la variabile i a 0
     i = 0
 
     # Stampa l'elenco dei file recenti enumerati
-    print(f"\nFile nella cartella 'dev' degli ultimi {num_days} giorni (dal più recente al più vecchio):\n")
+    print(f"\nFile nella folder {folderKey} degli ultimi {num_days} giorni (dal più recente al più vecchio):\n")
     for obj in recent_objects:
         i += 1
         print(f"\n{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}\n")
     return recent_objects, num_days, i
 
-def getEnumFileListSortedByDate(recent_objects):
+def getFileListSortedByCount(objects, folderKey):
+
+    filtered_objects = filterFileList(objects)
+
+    # Chiedi all'utente il numero di file da visualizzare
+    num_files = input("\nInserisci il numero di file da visualizzare: ")
+
+    if num_files.strip() == "":
+        num_files = 10  # Imposta un valore predefinito se l'utente non inserisce nulla
+        print(f"\nVerranno visualizzati i primi {num_files} file...")
+
+    num_files = int(num_files)
+
+    # Ordina gli oggetti per data di modifica in ordine decrescente
+    filtered_objects.sort(key=lambda x: x['LastModified'], reverse=True)
+
+    # Prendi i primi "num_files" oggetti
+    recent_objects = filtered_objects[:num_files]
+
+    # Inizializza la variabile i a 0
+    i = 0
+
+    # Stampa l'elenco dei file recenti enumerati
+    print(f"\nFile nella folder {folderKey} (primi {num_files} file per data di modifica):\n")
+    for obj in recent_objects:
+        i += 1
+        print(f"\n{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}\n")
+    return recent_objects, num_files, i
+
+def getEnumFileListSortedByDate(objects):
     # Chiedi all'utente quali file scaricare
     files = input("\nInserisci il/i numero/i del/dei file/s da elaborare [separati da virgola. (digitare ALL per selezionare tutti i files)]: ")
 
@@ -183,7 +222,7 @@ def getEnumFileListSortedByDate(recent_objects):
     elif files == 'ALL':
         ans = input('\nAttenzione!!! saranno selezionati tutti i file, SEI SICURO DI VOLER PROSEGUIRE? (YES per accettare): ')
         if ans =='YES':
-            files = list(range(1, len(recent_objects) + 1))
+            files = list(range(1, len(objects) + 1))
             print(f'\nTutti i file verranno selezionati! {files}\n')
         else:
             print('\nNon è stata confermata la selezione di tutti i file il programma terminerà\n')
@@ -192,10 +231,10 @@ def getEnumFileListSortedByDate(recent_objects):
         files = [int(num.strip()) for num in files.split(',') if num.strip().isdigit()]
     return files
 
-def getFileNamesAndDates(files, recent_objects, path_list, name_list, date_list):
+def getFileNamesAndDates(files, objects, path_list, name_list, date_list):
     for file_number in files:
-        if 1 <= file_number <= len(recent_objects):
-            selected_object = recent_objects[file_number - 1]
+        if 1 <= file_number <= len(objects):
+            selected_object = objects[file_number - 1]
             file_path = selected_object['Key']  # Ottieni tutto il path
             file_name = os.path.basename(selected_object['Key'])  # Ottieni solo il nome del file
             file_date = selected_object['LastModified']
@@ -267,7 +306,7 @@ def uploadFileToS3(local_files, bucket, subfolder):
     for local_file in local_files:
         remote_file = os.path.basename(local_file)
         # Specifica il percorso del bucket S3 di destinazione
-        bucket_s3_dest = f'\ns3://{bucket}/{subfolder}/{remote_file}\n'
+        bucket_s3_dest = f's3://{bucket}/{subfolder}/{remote_file}'
         
         # Esegui il comando aws s3 cp utilizzando subprocess
         comando = ['aws', 's3', 'cp', local_file, bucket_s3_dest]
