@@ -325,7 +325,7 @@ def deleteFileFromS3(bucket, remote_file_path):
         return
 
     # Specifica il percorso completo del file da eliminare, incluso il bucket
-    bucket_s3_dest = f'\ns3://{bucket}/{remote_file_path}\n'
+    bucket_s3_dest = f's3://{bucket}/{remote_file_path}'
 
     # Esegui il comando aws s3 rm utilizzando subprocess
     comando = ['aws', 's3', 'rm', bucket_s3_dest]
