@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import tkinter as tk
 from tkinter import filedialog
 import json
+import boto3
 
 
 # Crea una cartella con il formato 'YYYYMMDD'
@@ -26,7 +27,7 @@ def load_config(config_json):
             return json.load(config_file)
     return None
 
-# Splitta una stringa per mezzo di un separatore
+# Splitta una stringa in una parte centrale e finale per mezzo di un separatore
 def getStringParts(strng, sep):
     parts = re.split(f'[{sep}]', strng)
     centralPart = parts[1]
@@ -143,21 +144,39 @@ def enumerateCredentialFiles(defaultRole):
             print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
         
-def filterFileList(objects):
+def filterFileList(objects, filter):
     # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
-    filter = input('\ninserisci il filtro desiderato: ')  # Sostituisci con il filtro desiderato
+    if filter is None:
+        filter = input('\ninserisci il filtro desiderato: ')  # Sostituisci con il filtro desiderato
 
     # Filtra gli oggetti in base al filtro
     filtered_objects = [obj for obj in objects.get('Contents', []) if filter in obj['Key']]
     return filtered_objects
 
+def getFileListSortedByDate(bucket, folderKey, subFolderKey, filter, num_days):
+    if subFolderKey is not None:
+        folderKey = f"{folderKey}/{subFolderKey}"
+    
+    # Crea un client S3
+    s3 = boto3.client('s3')
 
-def getFileListSortedByDate(objects, folderKey):
+    # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
+    #filter = str(input('\ninserisci il filtro desiderato: '))  # Sostituisci con il filtro desiderato
+    Key=f"{folderKey}"
 
-    filtered_objects = filterFileList(objects)
+    print(f"{bucket}/{Key}")
+    
+    objects = s3.list_objects_v2(Bucket=bucket, Prefix=Key)
+    filtered_objects = filterFileList(objects, filter)
+
+#    print(objects)
+#    filtered_objects = filterFileList(objects, Key)
+#    filtered_objects = [obj for obj in objects.get('Contents', [])]
+    print(filtered_objects)
 
     # Chiedi all'utente il numero di giorni da considerare
-    num_days = input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: ")
+    if num_days is None:    
+        num_days = input("\nInserisci il numero di giorni precedenti ad oggi per cui visualizzare i file: ")
 
     if num_days.strip() == "":
         num_days = "10"
@@ -183,12 +202,32 @@ def getFileListSortedByDate(objects, folderKey):
         print(f"\n{i}. Nome: {obj['Key']}  Data di modifica: {obj['LastModified']}\n")
     return recent_objects, num_days, i
 
-def getFileListSortedByCount(objects, folderKey):
+def getFileListSortedByCount(bucket, folderKey, subFolderKey, filter, num_files):
+    if subFolderKey is not None:
+        folderKey = f"{folderKey}/{subFolderKey}"
+    #print(subFolderKey)
+    
+    # Crea un client S3
+    s3 = boto3.client('s3')
 
-    filtered_objects = filterFileList(objects)
+    #filtered_objects = filterFileList(objects)
+    # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
+    #filter = input('\ninserisci il filtro desiderato: ')  # Sostituisci con il filtro desiderato
+    Key=f"{folderKey}"
+
+    print(f"{bucket}/{Key}")
+
+    objects = s3.list_objects_v2(Bucket=bucket, Prefix=Key)
+    filtered_objects = filterFileList(objects, filter)
+
+#    print(objects)
+#    filtered_objects = filterFileList(objects, Key)
+#    filtered_objects = [obj for obj in objects.get('Contents', [])]
+    print(filtered_objects)
 
     # Chiedi all'utente il numero di file da visualizzare
-    num_files = input("\nInserisci il numero di file da visualizzare: ")
+    if num_files is None:
+        num_files = input("\nInserisci il numero di file da visualizzare: ")
 
     if num_files.strip() == "":
         num_files = 10  # Imposta un valore predefinito se l'utente non inserisce nulla
@@ -292,29 +331,39 @@ def saveTempCredentials(tempCredentials, role_arn, rows):
     else:
         print("\nImpossibile reperire le informazioni di ruolo, Riprova ad eseguire lo script!\n")
 
-def downloadFileFromS3(bucket, key, local_path, s3_client):
+def downloadFileFromS3(bucket, key, local_path):
+    # Crea il client s3
+    s3 = boto3.client('s3')
+
     # Scarica il file da S3
     try:
-        s3_client.download_file(bucket, key, local_path)
+        s3.download_file(bucket, key, local_path)
         print(f"\nFile '{key}' scaricato con successo in '{local_path}'\n")
     except Exception as e:
         print(f"\nErrore durante il download del file '{key}': {str(e)}\n")
 
-def uploadFileToS3(local_files, bucket, subfolder):
+def uploadFileToS3(local_files, bucket, subfolder, singleFile):
+    if singleFile is not None:
+        local_file = singleFile
+        uploadToS3(local_file, bucket, subfolder)
+    else:
+        for local_file in local_files:
+            uploadToS3(local_file, bucket, subfolder)
+
+def uploadToS3(local_file, bucket, subfolder):
     import subprocess
 
-    for local_file in local_files:
-        remote_file = os.path.basename(local_file)
-        # Specifica il percorso del bucket S3 di destinazione
-        bucket_s3_dest = f's3://{bucket}/{subfolder}/{remote_file}'
-        
-        # Esegui il comando aws s3 cp utilizzando subprocess
-        comando = ['aws', 's3', 'cp', local_file, bucket_s3_dest]
-        try:
-            subprocess.run(comando, check=True)
-            print(f"\nFile '{local_file}' uploadato con successo su S3.\n")
-        except Exception as e:
-            print(f"\nErrore durante l'upload del file su S3: {str(e)}\n")
+    remote_file = os.path.basename(local_file)
+    # Specifica il percorso del bucket S3 di destinazione
+    bucket_s3_dest = f's3://{bucket}/{subfolder}/{remote_file}'
+    
+    # Esegui il comando aws s3 cp utilizzando subprocess
+    comando = ['aws', 's3', 'cp', local_file, bucket_s3_dest]
+    try:
+        subprocess.run(comando, check=True)
+        print(f"\nFile '{local_file}' uploadato con successo su S3.\n")
+    except Exception as e:
+        print(f"\nErrore durante l'upload del file su S3: {str(e)}\n")
 
 def deleteFileFromS3(bucket, remote_file_path):
     import subprocess
@@ -335,6 +384,25 @@ def deleteFileFromS3(bucket, remote_file_path):
     except subprocess.CalledProcessError as e:
         print(f"\nErrore durante l'eliminazione del file da S3: {e}\n")
 
+def listFileFromS3(bucket, remote_file_path):
+    import subprocess
+
+    # Controlla se non sono stati inseriti tutti i parametri necessari
+    if not (bucket):
+        print("Non è stato fornito il nome del bucket necessario per elencare i file su S3.")
+        return
+
+    # Specifica il percorso completo del file da eliminare, incluso il bucket
+    bucket_s3_dest = f's3://{bucket}/{remote_file_path}'
+
+    # Esegui il comando aws s3 rm utilizzando subprocess
+    comando = ['aws', 's3', 'ls', bucket_s3_dest]
+    try:
+        subprocess.run(comando)
+        print(f"\nFiles elencati con successo dal bucket S3 {bucket}.\n")
+    except subprocess.CalledProcessError as e:
+        print(f"\nErrore durante l'enumerazione dei file da S3: {e}\n")
+
 def enumarateConfigElements(conf):
     for index, role in enumerate(conf):
         print(f"\n{index}: {role['name']} - {role['comment']}")
@@ -354,3 +422,8 @@ def enumarateConfigElements(conf):
             print("\nInserisci un numero valido.\n")
             exit(1)
     return int(Id)
+
+def generateUUID():
+    import uuid
+    uuidNumber = str(uuid.uuid4())
+    return uuidNumber
