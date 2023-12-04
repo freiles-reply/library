@@ -172,7 +172,7 @@ def getFileListSortedByDate(bucket, folderKey, subFolderKey, filter, num_days):
 #    print(objects)
 #    filtered_objects = filterFileList(objects, Key)
 #    filtered_objects = [obj for obj in objects.get('Contents', [])]
-    print(filtered_objects)
+#    print(filtered_objects)
 
     # Chiedi all'utente il numero di giorni da considerare
     if num_days is None:    
@@ -206,7 +206,7 @@ def getFileListSortedByCount(bucket, folderKey, subFolderKey, filter, num_files)
     if subFolderKey is not None:
         folderKey = f"{folderKey}/{subFolderKey}"
     #print(subFolderKey)
-    
+
     # Crea un client S3
     s3 = boto3.client('s3')
 
@@ -223,7 +223,7 @@ def getFileListSortedByCount(bucket, folderKey, subFolderKey, filter, num_files)
 #    print(objects)
 #    filtered_objects = filterFileList(objects, Key)
 #    filtered_objects = [obj for obj in objects.get('Contents', [])]
-    print(filtered_objects)
+#    print(filtered_objects)
 
     # Chiedi all'utente il numero di file da visualizzare
     if num_files is None:
