@@ -9,7 +9,17 @@ import tkinter as tk
 from tkinter import filedialog
 import json
 import boto3
+import platform
 
+def is_wsl(v: str = platform.uname().release) -> int:
+    """
+    detects if Python is running in WSL
+    """
+    if v.endswith("-Microsoft"):
+        return 1
+    elif v.endswith("microsoft-standard-WSL2"):
+        return 2
+    return 0
 
 # Crea una cartella con il formato 'YYYYMMDD'
 def create_date_folder(date):
