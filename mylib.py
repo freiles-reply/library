@@ -51,6 +51,8 @@ def createCredentialFile(name, user, passwd):
         file.write("[default]\n")
         file.write(f"username = {user}\n")
         file.write(f"password = {passwd}\n")
+    os.environ['username'] = user
+    os.environ['password'] = passwd
 
 # Ciclo attraverso tutti i file nella directory corrente ed elimina quelli più vecchi di un certo numero di secondi
 def listAndDeleteFiles(file_pattern, secs, current_time):
@@ -296,7 +298,8 @@ def getFileNamesAndDates(files, objects, path_list, name_list, date_list):
 
 def getTempCredentials(homeDir, configJson):
     os.system('aws-adfs reset')
-    commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --authfile=awsauth"
+#    commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --authfile=awsauth"
+    commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --env"
     os.system(commandString)
     if not os.path.exists(homeDir+ "/.aws"):
         os.remove(homeDir)
