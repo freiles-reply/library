@@ -302,7 +302,8 @@ def getTempCredentials(homeDir, configJson):
     commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --env"
     os.system(commandString)
     if not os.path.exists(homeDir+ "/.aws"):
-        os.remove(homeDir)
+        homeDirFileName = configJson["configuration"]["generic"]["homeDirFileName"]["value"]
+        os.remove(homeDirFileName)
         print("\nNon riesco a trovare la folder '.aws' nel percorso definito nel file HomeDir. Il file HomeDir verrà cancellato.\n")
         exit(1)
     tempCredentials = homeDir+ "/.aws/credentials"
