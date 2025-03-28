@@ -45,12 +45,14 @@ def getStringParts(strng, sep):
     return centralPart, finalPart
 
 # Genera il file delle credenziali Enel per aws
-def createCredentialFile(name, user, passwd):
-    print("creo il file delle credenziali ENEL...")
-    with open(name, 'w') as file:
-        file.write("[default]\n")
-        file.write(f"username = {user}\n")
-        file.write(f"password = {passwd}\n")
+def saveCredentials(user, passwd, name=None):
+    if name:
+        print("Creo il file delle credenziali ENEL...")
+        with open(name, 'w') as file:
+            file.write("[default]\n")
+            file.write(f"username = {user}\n")
+            file.write(f"password = {passwd}\n")
+    print("Salvo come variabili di ambiente le credenziali ENEL...")
     os.environ['username'] = user
     os.environ['password'] = passwd
 
@@ -155,7 +157,70 @@ def enumerateCredentialFiles(defaultRole):
         else:
             print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
-        
+
+def envSaveTempCredentials(config, awsauth=None, roleName=None):
+    rows = []
+
+    basicRolePrefix = config["configuration"]["generic"]["role"]["value"]
+    homeDirFileName = config["configuration"]["generic"]["homeDirFileName"]["value"]
+    #credentialFile = config["configuration"]["generic"]["credentialFile"]["value"]
+    defaultRole = config["configuration"]["generic"]["defaultRole"]["value"]
+
+    user = config["enelCredentials"]["user"]
+    passwd = config["enelCredentials"]["passwd"]
+
+    if awsauth:
+        saveCredentials(user, passwd, awsauth)
+    else:
+        saveCredentials(user, passwd)
+
+    homeDir = createHomeDirPath(homeDirFileName)
+
+    file_pattern = r"^"+basicRolePrefix+r".*_(\d{12})\..*$"
+    secs = float(config["configuration"]["timeToDelete"]["seconds"])
+    current_time = datetime.now()
+
+    listAndDeleteFiles(file_pattern, secs, current_time)
+
+    # Stampa il percorso selezionato
+    print("Percorso selezionato della home directory:", homeDir)
+    if roleName is None:
+        result = enumerateCredentialFiles(defaultRole)
+    else:
+        result = enumerateCredentialFiles(roleName)
+
+    if result == None:
+        print(f"Si procederà al prelievo delle credenziali temporanee modificando le variabili dell'ambiente scelto...\n")
+        tempCredentials, role_arn = getTempCredentials(homeDir, config)
+        saveTempCredentials(tempCredentials, role_arn, rows)
+        # Check if 'rows' has enough elements
+        if len(rows) < 5:
+            print("Errore: Le credenziali temporanee non sono state recuperate correttamente.")
+            raise IndexError("Le credenziali temporanee non contengono tutti i valori necessari.")
+        access_key = rows[1]
+        secret_key = rows[2]
+        session_token = rows[3]
+        security_token =rows[4]
+    else:
+        try:
+            selectedFile, access_key, secret_key, session_token, security_token = result
+            print(f"File selezionato: {selectedFile}.\nAcquisisco le credenziali temporanee...")
+            role_arn = getRoleArn(homeDir, config)
+        except ValueError:
+            print("Errore: Il risultato non contiene tutti i valori necessari.")
+            raise
+
+    config["awsCredentials"]["aws_access_key_id"] = access_key
+    config["awsCredentials"]["aws_secret_access_key"] = secret_key
+    config["awsCredentials"]["aws_session_token"] = session_token
+    config["awsCredentials"]["aws_security_token"] = security_token
+
+    print("Salvo le credenziali temporanee nelle relative variabili di ambiente...")
+    os.environ['AWS_ACCESS_KEY_ID'] = access_key
+    os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
+    os.environ['AWS_SESSION_TOKEN'] = session_token
+    os.environ['AWS_SECURITY_TOKEN'] = security_token
+
 def filterFileList(objects, filter):
     # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
     if filter is None:
@@ -307,6 +372,10 @@ def getTempCredentials(homeDir, configJson):
         print("\nNon riesco a trovare la folder '.aws' nel percorso definito nel file HomeDir. Il file HomeDir verrà cancellato.\n")
         exit(1)
     tempCredentials = homeDir+ "/.aws/credentials"
+    role_arn = getRoleArn(homeDir, configJson)
+    return tempCredentials, role_arn
+
+def getRoleArn(homeDir, configJson):
     configAWS = homeDir+ "/.aws/config"
     awsRole = "adfs_config.role_arn"
     role_arn = None
@@ -316,7 +385,7 @@ def getTempCredentials(homeDir, configJson):
                 role_arn = line.split("/")[-1].strip()
                 configJson["awsCredentials"]["AWSProjectRole"] = role_arn
                 break
-    return tempCredentials, role_arn
+    return role_arn
 
 def saveTempCredentials(tempCredentials, role_arn, rows):
     with open(tempCredentials, "r") as file:
@@ -441,3 +510,84 @@ def generateUUID():
     import uuid
     uuidNumber = str(uuid.uuid4())
     return uuidNumber
+
+def get_dynamodb_items(table_name):
+    dynamodb = boto3.client('dynamodb')
+    response = dynamodb.scan(TableName=table_name)
+    return response.get('Items', [])
+
+def get_nested_value(d, path):
+    for k in path:
+        if isinstance(d, dict) and k in d:
+            d = d[k]
+        else:
+            return None
+    return d
+
+def select_entry(items, key_path="sw_thing_type.S"):
+    print("Seleziona un elemento da visualizzare e/o modificare:")
+    path = key_path.split('.')
+    for i, item in enumerate(items, start=1):
+        value = get_nested_value(item, path)
+        label = value if value is not None else "N/A"
+        print(f"{i}. {label}")
+
+    choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    return items[choice] if 0 <= choice < len(items) else None
+
+def select_thing_entry(items):
+    print("Seleziona un elemento da visualizzare e/o modificare:")
+    for i, item in enumerate(items):
+        print(f"{i + 1}. {item['sw_thing_type']['S']}")
+    choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    return items[choice] if 0 <= choice < len(items) else None
+
+def choose_dynamodb_item(table_name, items):
+    if not items:
+        print("Nessun elemento trovato nella tabella.")
+        return
+    print(f"Trovati {len(items)} elementi nella tabella {table_name}")
+    selected_item = select_entry(items)
+    if not selected_item:
+        print("Scelta non valida.")
+        return
+    print("JSON elemento scelto:")
+    for i, it in enumerate(items, start=1):
+        if it != selected_item:
+            continue
+        else:
+            print(f"Elemento {i}:")
+            print(json.dumps(it, indent=2))
+            print()
+    return selected_item
+
+def get_or_create_nested(item, keys):
+    """Ritorna (crea se non esiste) il dizionario annidato specificato da keys."""
+    if not keys:
+        return item
+    key = keys[0]
+    if key not in item:
+        item[key] = {}
+    return get_or_create_nested(item[key], keys[1:])
+
+def update_dynamodb_entry(table_name, item, new_entry_name, path_keys):
+    if not new_entry_name.strip():
+        print("Nessuna entry aggiunta. Operazione annullata.")
+        return
+
+    dynamodb = boto3.client("dynamodb")
+
+    # Naviga (o crea) i livelli richiesti (es. ["CP_map","M"] o ["CP_list","Entry","N"]) 
+    sub_dict = get_or_create_nested(item, path_keys)
+
+    # Qui si assume che l'ultimo livello contenga una struttura "M" per la mappa
+    if "M" not in sub_dict:
+        sub_dict["M"] = {}
+
+    map_dict = sub_dict["M"]
+    values = [int(v["S"]) for v in map_dict.values() if "S" in v]
+    new_value = str(max(values) + 1) if values else "1"
+
+    map_dict[new_entry_name] = {"S": new_value}
+    dynamodb.put_item(TableName=table_name, Item=item)
+    print(f"Aggiunta nuova entry: {new_entry_name} con valore {new_value}")
