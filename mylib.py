@@ -63,7 +63,6 @@ def listAndDeleteFiles(file_pattern, secs, current_time):
         if match:
             file_time = match.group(1)  # Estrai la data/ora dal nome del file
             file_datetime = datetime.strptime(file_time, "%Y%m%d%H%M")
-            
             # Confronta la data/ora attuale con la data/ora del file + 1 ora
             if (file_datetime + timedelta(seconds=secs)) < current_time:
                 os.remove(filename)
@@ -177,6 +176,7 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
     homeDir = createHomeDirPath(homeDirFileName)
 
     file_pattern = r"^"+basicRolePrefix+r".*_(\d{12})\..*$"
+    print(f"\nPattern per la ricerca dei file: {file_pattern}\n")
     secs = float(config["configuration"]["timeToDelete"]["seconds"])
     current_time = datetime.now()
 
@@ -192,7 +192,8 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
     if result == None:
         print(f"Si procederà al prelievo delle credenziali temporanee modificando le variabili dell'ambiente scelto...\n")
         tempCredentials, role_arn = getTempCredentials(homeDir, config)
-        saveTempCredentials(tempCredentials, role_arn, rows)
+        selectedFile = saveTempCredentials(tempCredentials, role_arn, rows)
+
         # Check if 'rows' has enough elements
         if len(rows) < 5:
             print("Errore: Le credenziali temporanee non sono state recuperate correttamente.")
@@ -210,6 +211,8 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
             print("Errore: Il risultato non contiene tutti i valori necessari.")
             raise
 
+    envprefix = extract_string(selectedFile)
+
     config["awsCredentials"]["aws_access_key_id"] = access_key
     config["awsCredentials"]["aws_secret_access_key"] = secret_key
     config["awsCredentials"]["aws_session_token"] = session_token
@@ -220,6 +223,8 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
     os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
     os.environ['AWS_SESSION_TOKEN'] = session_token
     os.environ['AWS_SECURITY_TOKEN'] = security_token
+    print(envprefix)
+    return envprefix
 
 def filterFileList(objects, filter):
     # Specifica il filtro (esempio: file che contengono 'fjb' o cartelle che contengono 'CP')
@@ -387,6 +392,16 @@ def getRoleArn(homeDir, configJson):
                 break
     return role_arn
 
+def extract_string(fullString):
+    extracted_str = None
+    # Estrae la parte che segue il pattern "esol_<part1>" escludendo ulteriori suffissi
+    match = re.search(r"(esol-[^_]+)_\d{12}", fullString)
+
+    if match:
+        extracted_str = match.group(1).replace("-", "_")
+#            print("Stringa estratta:", extracted_str)
+    return extracted_str
+
 def saveTempCredentials(tempCredentials, role_arn, rows):
     with open(tempCredentials, "r") as file:
         credentials_content = file.read()
@@ -413,6 +428,7 @@ def saveTempCredentials(tempCredentials, role_arn, rows):
             f.close()
     else:
         print("\nImpossibile reperire le informazioni di ruolo, Riprova ad eseguire lo script!\n")
+    return projConf
 
 def downloadFileFromS3(bucket, key, local_path):
     # Crea il client s3
