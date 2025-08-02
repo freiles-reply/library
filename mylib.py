@@ -10,6 +10,191 @@ from tkinter import filedialog
 import json
 import boto3
 import platform
+import sys
+
+# Aggiungi il path per aws-sso-credential-manager (configurabile via variabile d'ambiente)
+# Cerca il file .env risalendo la gerarchia delle directory
+def find_env_file():
+    """Cerca il file .env partendo dalla directory corrente e risalendo fino alla directory padre"""
+    current_dir = os.getcwd()
+    
+    # Lista delle directory da controllare
+    search_dirs = [
+        current_dir,  # Directory corrente
+        os.path.dirname(__file__),  # Directory della libreria
+        os.path.dirname(os.path.dirname(__file__)),  # Directory padre della libreria
+    ]
+    
+    # Aggiungi directory padre della directory corrente
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir != current_dir:  # Evita loop infinito alla root
+        search_dirs.append(parent_dir)
+    
+    for search_dir in search_dirs:
+        env_file = os.path.join(search_dir, '.env')
+        if os.path.exists(env_file):
+            return env_file
+    
+    return None
+
+# Carica il file .env se trovato
+env_file = find_env_file()
+if env_file:
+    print(f"📄 Caricamento configurazione da {env_file}")
+    with open(env_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
+
+aws_sso_path = os.environ.get('AWS_SSO_CREDENTIAL_MANAGER_PATH')
+
+# Se non è impostata la variabile d'ambiente, cerca in directory comuni
+if not aws_sso_path:
+    # Lista di percorsi comuni dove potrebbe trovarsi il tool
+    common_paths = [
+        "./aws-sso-credential-manager",  # Directory corrente
+        "../aws-sso-credential-manager",  # Directory padre
+        "~/tools/aws-sso-credential-manager",  # Home/tools
+        "/opt/aws-sso-credential-manager",  # Sistema Linux/Mac
+        "/usr/local/bin/aws-sso-credential-manager",  # Installazione sistema
+    ]
+    
+    for path in common_paths:
+        expanded_path = os.path.expanduser(path)
+        if os.path.exists(expanded_path):
+            aws_sso_path = expanded_path
+            print(f"🔍 AWS SSO Credential Manager trovato in: {aws_sso_path}")
+            break
+    
+    if not aws_sso_path:
+        print("⚠️ AWS SSO Credential Manager non trovato.")
+        print("💡 Configurazione necessaria:")
+        print("   1. Imposta variabile d'ambiente: export AWS_SSO_CREDENTIAL_MANAGER_PATH=/path/to/aws-sso-credential-manager")
+        print("   2. Oppure crea file .env con: AWS_SSO_CREDENTIAL_MANAGER_PATH=/path/to/aws-sso-credential-manager")
+        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
+else:
+    # Verifica che il path configurato sia valido
+    if not os.path.exists(aws_sso_path):
+        print(f"⚠️ Path configurato non valido: {aws_sso_path}")
+        print("🔧 Il path nel file .env o nella variabile d'ambiente non esiste.")
+        # Reset aws_sso_path per attivare la logica di riconfigurazione
+        aws_sso_path = None
+
+if aws_sso_path and aws_sso_path not in sys.path:
+    sys.path.insert(0, aws_sso_path)
+
+# Importa direttamente la classe AWSCredentialManager
+try:
+    from credential_manager import AWSCredentialManager
+    _USE_SSO = True
+    print("🎯 AWS SSO Credential Manager disponibile")
+except ImportError as e:
+    print(f"⚠️ AWS SSO non disponibile: {e}")
+    _USE_SSO = False
+    
+    # Se aws_sso_path era configurato ma il modulo non è importabile,
+    # o se aws_sso_path è None (path non valido), prova il setup automatico
+    print("� Avvio setup automatico per configurare AWS SSO Credential Manager...")
+    try:
+        # Importa e esegue il setup dalla stessa directory
+        # Prova diversi metodi di import per robustezza
+        setup_aws_sso = None
+        
+        # Metodo 1: Import relativo
+        try:
+            from . import setup_aws_sso
+        except ImportError:
+            # Metodo 2: Import assoluto se siamo nel modulo library
+            try:
+                import setup_aws_sso
+            except ImportError:
+                # Metodo 3: Import dinamico dal path
+                import importlib.util
+                setup_file = os.path.join(os.path.dirname(__file__), 'setup_aws_sso.py')
+                if os.path.exists(setup_file):
+                    spec = importlib.util.spec_from_file_location("setup_aws_sso", setup_file)
+                    setup_aws_sso = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(setup_aws_sso)
+        
+        if setup_aws_sso is None:
+            raise ImportError("Impossibile importare setup_aws_sso")
+        
+        print("💡 Il modulo credential_manager non è disponibile o il path non è valido.")
+        print("🔧 Configurazione automatica in corso...")
+        print()
+        
+        setup_success = setup_aws_sso.run_setup()
+        
+        if setup_success:
+            print("🔄 Riprovo a caricare il modulo credential_manager...")
+            
+            # IMPORTANTE: Dopo un setup completato, ricarica il nuovo path dal file .env aggiornato
+            print("📄 Ricaricamento configurazione aggiornata...")
+            
+            # Ricarica il file .env per ottenere il nuovo path
+            env_file = find_env_file()
+            if env_file:
+                print(f"📄 Ricaricamento da {env_file}")
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            if key.strip() == 'AWS_SSO_CREDENTIAL_MANAGER_PATH':
+                                new_aws_sso_path = value.strip()
+                                print(f"🔄 Nuovo path caricato: {new_aws_sso_path}")
+                                
+                                # Aggiorna il path nel sys.path se valido
+                                if os.path.exists(new_aws_sso_path):
+                                    # Rimuovi il vecchio path se esistente
+                                    if aws_sso_path and aws_sso_path in sys.path:
+                                        sys.path.remove(aws_sso_path)
+                                    
+                                    # Aggiungi il nuovo path
+                                    if new_aws_sso_path not in sys.path:
+                                        sys.path.insert(0, new_aws_sso_path)
+                                    
+                                    # Aggiorna la variabile globale
+                                    globals()['aws_sso_path'] = new_aws_sso_path
+                                    os.environ['AWS_SSO_CREDENTIAL_MANAGER_PATH'] = new_aws_sso_path
+                                    
+                                    print(f"✅ Path aggiornato nel sistema: {new_aws_sso_path}")
+                                else:
+                                    print(f"❌ Il nuovo path non è valido: {new_aws_sso_path}")
+                                break
+            
+            # Riprova l'import dopo il setup
+            try:
+                # Forza la rimozione del modulo dalla cache se già caricato
+                if 'credential_manager' in sys.modules:
+                    del sys.modules['credential_manager']
+                    print("🔄 Cache modulo credential_manager pulita")
+                
+                from credential_manager import AWSCredentialManager
+                _USE_SSO = True
+                globals()['_USE_SSO'] = True
+                print("✅ AWS SSO Credential Manager ora disponibile!")
+            except ImportError:
+                print("❌ Il modulo credential_manager non è ancora disponibile.")
+                print("🔧 Potrebbe essere necessario riavviare il programma.")
+        else:
+            print("❌ Setup automatico non completato.")
+            print("⚠️ La libreria continuerà senza supporto AWS SSO.")
+            
+    except ImportError:
+        print("❌ Setup automatico non disponibile.")
+        print("💡 Per abilitare AWS SSO:")
+        print("   1. Installa aws-sso-credential-manager")
+        print("   2. Imposta AWS_SSO_CREDENTIAL_MANAGER_PATH")
+        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
+    except Exception as setup_error:
+        print(f"❌ Errore durante il setup automatico: {setup_error}")
+        print("💡 Per abilitare AWS SSO:")
+        print("   1. Installa aws-sso-credential-manager")
+        print("   2. Imposta AWS_SSO_CREDENTIAL_MANAGER_PATH")
+        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
 
 def is_wsl(v: str = platform.uname().release) -> int:
     """
@@ -156,7 +341,7 @@ def enumerateCredentialFiles(defaultRole):
         else:
             print("\nInput non valido. Si procederà con nuove credenziali temporanee.\n")
             return None
-
+        
 def envSaveTempCredentials(config, awsauth=None, roleName=None):
     rows = []
 
@@ -192,16 +377,43 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
     if result == None:
         print(f"Si procederà al prelievo delle credenziali temporanee modificando le variabili dell'ambiente scelto...\n")
         tempCredentials, role_arn = getTempCredentials(homeDir, config)
-        selectedFile = saveTempCredentials(tempCredentials, role_arn, rows)
+        
+        # Per SSO, crea direttamente il selectedFile e salta saveTempCredentials
+        if _USE_SSO:
+            import time
+            current_time = time.strftime("%Y%m%d%H%M")
+            
+            # Crea un nome file basato sul role_arn per compatibilità con extract_string
+            if role_arn and role_arn.isdigit():
+                # È un account ID, crea un nome progetto fittizio
+                selectedFile = f"esol-ap-{role_arn}_{current_time}.txt"
+            elif role_arn and 'esol' in role_arn:
+                # Usa il role_arn che contiene 'esol'
+                selectedFile = f"{role_arn}_{current_time}.txt"
+            else:
+                # Fallback generico
+                selectedFile = f"esol-ap-unknown_{current_time}.txt"
+            
+            # Leggi le credenziali dal file AWS che abbiamo creato
+            import configparser
+            aws_config = configparser.ConfigParser()
+            aws_config.read(tempCredentials)
+            
+            access_key = aws_config['default']['aws_access_key_id']
+            secret_key = aws_config['default']['aws_secret_access_key']
+            session_token = aws_config['default']['aws_session_token']
+            security_token = aws_config['default']['aws_security_token']
+        else:
+            selectedFile = saveTempCredentials(tempCredentials, role_arn, rows)
 
-        # Check if 'rows' has enough elements
-        if len(rows) < 5:
-            print("Errore: Le credenziali temporanee non sono state recuperate correttamente.")
-            raise IndexError("Le credenziali temporanee non contengono tutti i valori necessari.")
-        access_key = rows[1]
-        secret_key = rows[2]
-        session_token = rows[3]
-        security_token =rows[4]
+            # Check if 'rows' has enough elements
+            if len(rows) < 5:
+                print("Errore: Le credenziali temporanee non sono state recuperate correttamente.")
+                raise IndexError("Le credenziali temporanee non contengono tutti i valori necessari.")
+            access_key = rows[1]
+            secret_key = rows[2]
+            session_token = rows[3]
+            security_token = rows[4]
     else:
         try:
             selectedFile, access_key, secret_key, session_token, security_token = result
@@ -223,6 +435,7 @@ def envSaveTempCredentials(config, awsauth=None, roleName=None):
     os.environ['AWS_SECRET_ACCESS_KEY'] = secret_key
     os.environ['AWS_SESSION_TOKEN'] = session_token
     os.environ['AWS_SECURITY_TOKEN'] = security_token
+    os.environ['AWS_DEFAULT_REGION'] = 'eu-central-1'  # Region di default per ENEL
     print(envprefix)
     return envprefix
 
@@ -367,39 +580,248 @@ def getFileNamesAndDates(files, objects, path_list, name_list, date_list):
             exit(1)
 
 def getTempCredentials(homeDir, configJson):
-    os.system('aws-adfs reset')
-#    commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --authfile=awsauth"
-    commandString = "aws-adfs login --adfs-host=sts.enel.com --no-sspi --env"
-    os.system(commandString)
-    if not os.path.exists(homeDir+ "/.aws"):
-        homeDirFileName = configJson["configuration"]["generic"]["homeDirFileName"]["value"]
-        os.remove(homeDirFileName)
-        print("\nNon riesco a trovare la folder '.aws' nel percorso definito nel file HomeDir. Il file HomeDir verrà cancellato.\n")
-        exit(1)
-    tempCredentials = homeDir+ "/.aws/credentials"
-    role_arn = getRoleArn(homeDir, configJson)
-    return tempCredentials, role_arn
+    """
+    Ottiene credenziali temporanee AWS tramite SSO usando il tuo credential_manager.py
+    """
+    if _USE_SSO:
+        try:
+            print("🔐 === Autenticazione AWS SSO ===")
+            
+            # Istanzia direttamente la classe AWSCredentialManager
+            credential_manager = AWSCredentialManager()
+            
+            # Prima cleanup file scaduti
+            credential_manager.cleanup_expired_files()
+            
+            # Controlla se ci sono file validi esistenti (solo per info, non per bloccare)
+            valid_files = credential_manager.get_valid_credential_files()
+            
+            if not valid_files:
+                print("🎯 Nessun file SSO valido trovato - il credential manager gestirà la configurazione")
+            else:
+                print("🎯 File SSO validi trovati - avvio menu di selezione profilo SSO...")
+            
+            # Usa sempre il processo SSO completo (gestisce sia configurazione che selezione)
+            print("🚀 Avvio processo di autenticazione SSO...")
+            
+            # Assicurati che l'output sia visibile in tempo reale
+            import sys
+            sys.stdout.flush()
+            sys.stderr.flush()
+            
+            # Il credential_manager gestisce tutto: file esistenti, menu, rigenerazione, configurazione
+            # MODIFICATO: credential_manager.py ora mostra l'output SSO direttamente (no capture_output)
+            result = credential_manager.process_sso_authentication()
+            
+            # CONTROLLO USCITA UTENTE: Se il process_sso_authentication ritorna False o un valore 
+            # che indica uscita dell'utente, termina il programma invece di andare in fallback
+            if result is False or (isinstance(result, str) and result.lower() in ['exit', 'quit', 'esci']):
+                print("👋 Utente ha scelto di uscire dal menu SSO - terminazione programma")
+                import sys
+                sys.exit(0)
+            
+            # IMPORTANTE: Il process_sso_authentication può gestire profili esistenti internamente
+            # Se l'utente ha selezionato un profilo esistente, dobbiamo intercettare questa scelta
+            # e non procedere con il "file più recente" ma con il profilo effettivamente selezionato
+            
+            # Ottieni i file validi dopo il processo SSO (potrebbero essere stati creati nuovi file)
+            valid_files_after = credential_manager.get_valid_credential_files()
+            
+            # Se non ci sono file validi dopo il processo E l'utente non è uscito volontariamente,
+            # potrebbe essere un errore o l'utente potrebbe aver scelto di uscire in modo diverso
+            if not valid_files_after:
+                # Controlla se l'utente ha veramente scelto di uscire controllando se result è None
+                # in combinazione con l'assenza di file validi
+                if result is None:
+                    print("👋 Nessun profilo selezionato - l'utente potrebbe aver scelto di uscire")
+                    print("🚪 Terminazione programma")
+                    import sys
+                    sys.exit(0)
+                else:
+                    raise Exception("Nessun file SSO valido disponibile dopo il processo di autenticazione")
+            
+            # CORREZIONE CRITICA: Non prendere il file più recente!
+            # Il problema è che quando l'utente seleziona un profilo nel menu del credential manager,
+            # noi ignoriamo questa selezione e prendiamo sempre il file più recente.
+            # Dobbiamo invece cercare di capire quale profilo è stato effettivamente selezionato.
+            
+            # Strategia: Confronta i file prima e dopo per vedere se ne è stato aggiunto uno nuovo
+            # Se non è stato aggiunto nessun file nuovo, significa che l'utente ha selezionato un profilo esistente
+            files_before_names = set(f[0] for f in valid_files) if valid_files else set()
+            files_after_names = set(f[0] for f in valid_files_after)
+            
+            new_files = files_after_names - files_before_names
+            
+            if new_files:
+                # È stato creato un nuovo file - usa quello
+                new_file_name = list(new_files)[0]
+                selected_file = next(f for f in valid_files_after if f[0] == new_file_name)
+                print(f"🆕 Nuovo file SSO creato: {selected_file[1] if len(selected_file) > 1 else 'unknown'}")
+            else:
+                # Nessun nuovo file - l'utente ha probabilmente selezionato un profilo esistente
+                # In questo caso, non possiamo sapere quale profilo è stato selezionato dal menu
+                # perché il credential manager non ci passa questa informazione
+                
+                # SOLUZIONE: Controlla se le variabili d'ambiente sono già state impostate dal credential manager
+                if os.environ.get('AWS_ACCESS_KEY_ID'):
+                    print("🔍 Rilevate credenziali AWS già impostate dal credential manager")
+                    
+                    # Trova il file corrispondente alle credenziali attuali
+                    current_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+                    matching_file = None
+                    
+                    for file_info in valid_files_after:
+                        if len(file_info) >= 5:  # Ha contenuto credenziali
+                            content = file_info[4]
+                            if current_access_key in content:
+                                matching_file = file_info
+                                break
+                    
+                    if matching_file:
+                        selected_file = matching_file
+                        print(f"✅ Trovato profilo corrispondente alle credenziali attuali: {selected_file[1] if len(selected_file) > 1 else 'unknown'}")
+                    else:
+                        # CONTROLLO PRIMA DEL FALLBACK: Verifica se l'utente ha scelto di uscire
+                        if result is None:
+                            print("🚪 Nessun profilo corrispondente trovato e processo SSO terminato - possibile uscita utente")
+                            print("👋 Terminazione programma")
+                            import sys
+                            sys.exit(0)
+                        
+                        # Fallback: usa il file più recente SOLO se non è un'uscita
+                        files_sorted = sorted(valid_files_after, key=lambda x: x[2] if len(x) > 2 else "", reverse=True)
+                        selected_file = files_sorted[0]
+                        print("⚠️  Fallback: usando file più recente disponibile")
+                else:
+                    # CONTROLLO AGGIUNTIVO: Prima del fallback, verifica se l'utente ha scelto di uscire
+                    # Se result è None e non ci sono credenziali ambiente, potrebbe significare uscita
+                    if result is None and not os.environ.get('AWS_ACCESS_KEY_ID'):
+                        print("🚪 Nessuna credenziale disponibile e processo SSO terminato - possibile uscita utente")
+                        print("👋 Terminazione programma")
+                        import sys
+                        sys.exit(0)
+                    
+                    # Fallback: usa il file più recente SOLO se siamo sicuri che non è un'uscita
+                    files_sorted = sorted(valid_files_after, key=lambda x: x[2] if len(x) > 2 else "", reverse=True)
+                    selected_file = files_sorted[0]
+                    print("⚠️  Fallback: usando file più recente disponibile")
+            
+            if not selected_file or len(selected_file) < 5:
+                raise Exception("File SSO non valido o incompleto")
+            
+            # Il processo SSO deve permettere all'utente di scegliere il profilo
+            # Controlla se l'utente ha selezionato un profilo ENEL (che contiene 'esol-')
+            profile_name = selected_file[1] if len(selected_file) > 1 else "unknown"
+            timestamp = selected_file[2] if len(selected_file) > 2 else "N/A"
+            
+            print(f"🎯 Profilo selezionato dall'utente: {profile_name} (timestamp: {timestamp})")
+            
+            # IMPORTANTE: Non forzare il nome del profilo! Usa quello selezionato dall'utente
+            if 'esol-' not in profile_name:
+                print("⚠️  ATTENZIONE: Il profilo selezionato non sembra essere un profilo ENEL")
+                print(f"    Profilo: {profile_name}")
+                print("    Per progetti ENEL, assicurati di selezionare un profilo che contiene 'esol-'")
+            
+            # Estrai le credenziali dal formato SSO
+            sso_content = selected_file[4]  # Il contenuto delle credenziali
+            
+            # Parse del contenuto SSO
+            lines = sso_content.strip().split('\n')
+            access_key = None
+            secret_key = None
+            session_token = None
+            
+            for i, line in enumerate(lines):
+                if line == 'AccessKeyId' and i + 1 < len(lines):
+                    access_key = lines[i + 1]
+                elif line == 'SecretAccessKey' and i + 1 < len(lines):
+                    secret_key = lines[i + 1]
+                elif line == 'SessionToken' and i + 1 < len(lines):
+                    session_token = lines[i + 1]
+            
+            if not all([access_key, secret_key, session_token]):
+                raise Exception("Credenziali SSO incomplete")
+            
+            # Crea file credenziali AWS standard
+            aws_credentials_path = os.path.join(homeDir, ".aws", "credentials")
+            os.makedirs(os.path.dirname(aws_credentials_path), exist_ok=True)
+            
+            # Scrivi le credenziali in formato AWS
+            with open(aws_credentials_path, 'w') as f:
+                f.write("[default]\n")
+                f.write(f"aws_access_key_id = {access_key}\n")
+                f.write(f"aws_secret_access_key = {secret_key}\n")
+                f.write(f"aws_session_token = {session_token}\n")
+                f.write(f"aws_security_token = {session_token}\n")  # Stesso token per compatibilità
+            
+            # Estrai il nome del ruolo dal profilo selezionato dall'utente
+            if 'esol-' in profile_name and '-' in profile_name:
+                # Per profili ENEL, usa il nome completo del profilo
+                role_arn = profile_name
+                print(f"🎯 Usando nome profilo ENEL selezionato: {role_arn}")
+            elif '-' in profile_name:
+                # Per altri profili come "E-Solution-Prod-IOTSupport-876591523896"
+                parts = profile_name.split('-')
+                # Cerca un account ID (numero di 12 cifre)
+                for part in parts:
+                    if part.isdigit() and len(part) >= 10:  # Account ID AWS
+                        role_arn = part
+                        break
+                else:
+                    role_arn = parts[-1]  # Ultimo elemento se nessun match
+                print(f"🎯 Estratto account ID da profilo generico selezionato: {role_arn}")
+            else:
+                role_arn = profile_name
+                print(f"🎯 Usando nome profilo semplice selezionato: {role_arn}")
+            
+            print("✅ Credenziali SSO convertite con successo!")
+            return aws_credentials_path, role_arn
+            
+        except Exception as e:
+            print(f"❌ Errore SSO: {e}")
+            import traceback
+            traceback.print_exc()
+            raise Exception(f"Autenticazione SSO fallita: {e}")
+    else:
+        raise Exception("AWS SSO Credential Manager non disponibile. Installare il modulo credential_manager.")
 
 def getRoleArn(homeDir, configJson):
-    configAWS = homeDir+ "/.aws/config"
-    awsRole = "adfs_config.role_arn"
-    role_arn = None
-    with open(configAWS, "r") as file:
-        for line in file:
-            if line.startswith(awsRole):
-                role_arn = line.split("/")[-1].strip()
+    """
+    Ottiene il ruolo ARN dalle credenziali SSO
+    """
+    if _USE_SSO:
+        try:
+            # Per SSO, estrai il ruolo dall'ultimo file utilizzato
+            credential_manager = AWSCredentialManager()
+            valid_files = credential_manager.get_valid_credential_files()
+            
+            if valid_files:
+                # Usa il primo file valido disponibile
+                profile_name = valid_files[0][1] if len(valid_files[0]) > 1 else "unknown"
+                role_arn = profile_name.split('-')[-1] if '-' in profile_name else profile_name
                 configJson["awsCredentials"]["AWSProjectRole"] = role_arn
-                break
-    return role_arn
+                return role_arn
+            else:
+                raise Exception("Nessun file SSO valido per estrarre il ruolo")
+                
+        except Exception as e:
+            print(f"⚠️ Errore estrazione ruolo SSO: {e}")
+            raise Exception(f"Impossibile ottenere ruolo da SSO: {e}")
+    else:
+        raise Exception("AWS SSO Credential Manager non disponibile")
 
 def extract_string(fullString):
     extracted_str = None
-    # Estrae la parte che segue il pattern "esol_<part1>" escludendo ulteriori suffissi
-    match = re.search(r"(esol-[^_]+)_\d{12}", fullString)
+    # Estrae la parte che segue il pattern "esol-<part1>-<part2>-<12digits>"
+    # Es: "esol-ap3241101-test-039931352532" -> "esol_ap3241101_test"
+    match = re.search(r"(esol-[^-]+-[^-]+)-\d{12}", fullString)
 
     if match:
-        extracted_str = match.group(1).replace("-", "_")
-#            print("Stringa estratta:", extracted_str)
+        # Estrae la parte "esol-ap3241101-test", sostituisce i trattini con underscore
+        base_part = match.group(1)  # "esol-ap3241101-test"
+        base_part_underscored = base_part.replace("-", "_")  # "esol_ap3241101_test"
+        extracted_str = base_part_underscored  # "esol_ap3241101_test" (senza suffisso)
+        print(f"🔧 extract_string: '{fullString}' -> '{extracted_str}'")
     return extracted_str
 
 def saveTempCredentials(tempCredentials, role_arn, rows):

@@ -1,0 +1,28 @@
+# MyLib - Dipendenze Python
+# 
+# Queste sono le dipendenze minime richieste per utilizzare mylib
+# Molte di queste sono già incluse nella libreria standard di Python
+
+# AWS SDK per Python
+boto3>=1.26.0
+
+# Gestione configurazioni (incluso in Python standard)
+configparser
+
+# GUI per dialogs di selezione (incluso in Python standard su macOS/Windows)
+# Su Linux potrebbe richiedere: sudo apt-get install python3-tk
+
+# Gestione date e regex (inclusi in Python standard)
+# datetime
+# re
+# time
+# os
+# sys
+# platform
+# json
+
+# Note:
+# - tkinter è incluso nella maggior parte delle installazioni Python
+# - Su Ubuntu/Debian: sudo apt-get install python3-tk
+# - Su CentOS/RHEL: sudo yum install tkinter
+# - Su macOS e Windows è generalmente già disponibile
