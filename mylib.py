@@ -12,77 +12,16 @@ import boto3
 import platform
 import sys
 
-# Aggiungi il path per aws-sso-credential-manager (configurabile via variabile d'ambiente)
-# Cerca il file .env risalendo la gerarchia delle directory
-def find_env_file():
-    """Cerca il file .env partendo dalla directory corrente e risalendo fino alla directory padre"""
-    current_dir = os.getcwd()
-    
-    # Lista delle directory da controllare
-    search_dirs = [
-        current_dir,  # Directory corrente
-        os.path.dirname(__file__),  # Directory della libreria
-        os.path.dirname(os.path.dirname(__file__)),  # Directory padre della libreria
-    ]
-    
-    # Aggiungi directory padre della directory corrente
-    parent_dir = os.path.dirname(current_dir)
-    if parent_dir != current_dir:  # Evita loop infinito alla root
-        search_dirs.append(parent_dir)
-    
-    for search_dir in search_dirs:
-        env_file = os.path.join(search_dir, '.env')
-        if os.path.exists(env_file):
-            return env_file
-    
-    return None
+# Import inquirer per menu interattivi (frecce)
+try:
+    import inquirer
+    INQUIRER_AVAILABLE = True
+except Exception:
+    INQUIRER_AVAILABLE = False
 
-# Carica il file .env se trovato
-env_file = find_env_file()
-if env_file:
-    print(f"📄 Caricamento configurazione da {env_file}")
-    with open(env_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                os.environ[key.strip()] = value.strip()
-
-aws_sso_path = os.environ.get('AWS_SSO_CREDENTIAL_MANAGER_PATH')
-
-# Se non è impostata la variabile d'ambiente, cerca in directory comuni
-if not aws_sso_path:
-    # Lista di percorsi comuni dove potrebbe trovarsi il tool
-    common_paths = [
-        "./aws-sso-credential-manager",  # Directory corrente
-        "../aws-sso-credential-manager",  # Directory padre
-        "~/tools/aws-sso-credential-manager",  # Home/tools
-        "/opt/aws-sso-credential-manager",  # Sistema Linux/Mac
-        "/usr/local/bin/aws-sso-credential-manager",  # Installazione sistema
-    ]
-    
-    for path in common_paths:
-        expanded_path = os.path.expanduser(path)
-        if os.path.exists(expanded_path):
-            aws_sso_path = expanded_path
-            print(f"🔍 AWS SSO Credential Manager trovato in: {aws_sso_path}")
-            break
-    
-    if not aws_sso_path:
-        print("⚠️ AWS SSO Credential Manager non trovato.")
-        print("💡 Configurazione necessaria:")
-        print("   1. Imposta variabile d'ambiente: export AWS_SSO_CREDENTIAL_MANAGER_PATH=/path/to/aws-sso-credential-manager")
-        print("   2. Oppure crea file .env con: AWS_SSO_CREDENTIAL_MANAGER_PATH=/path/to/aws-sso-credential-manager")
-        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
-else:
-    # Verifica che il path configurato sia valido
-    if not os.path.exists(aws_sso_path):
-        print(f"⚠️ Path configurato non valido: {aws_sso_path}")
-        print("🔧 Il path nel file .env o nella variabile d'ambiente non esiste.")
-        # Reset aws_sso_path per attivare la logica di riconfigurazione
-        aws_sso_path = None
-
-if aws_sso_path and aws_sso_path not in sys.path:
+# Aggiungi il path per aws-sso-credential-manager
+aws_sso_path = "/Users/francescofreiles/Library/CloudStorage/OneDrive-Personal/Devel/GIT/aws-sso-credential-manager"
+if aws_sso_path not in sys.path:
     sys.path.insert(0, aws_sso_path)
 
 # Importa direttamente la classe AWSCredentialManager
@@ -93,108 +32,6 @@ try:
 except ImportError as e:
     print(f"⚠️ AWS SSO non disponibile: {e}")
     _USE_SSO = False
-    
-    # Se aws_sso_path era configurato ma il modulo non è importabile,
-    # o se aws_sso_path è None (path non valido), prova il setup automatico
-    print("� Avvio setup automatico per configurare AWS SSO Credential Manager...")
-    try:
-        # Importa e esegue il setup dalla stessa directory
-        # Prova diversi metodi di import per robustezza
-        setup_aws_sso = None
-        
-        # Metodo 1: Import relativo
-        try:
-            from . import setup_aws_sso
-        except ImportError:
-            # Metodo 2: Import assoluto se siamo nel modulo library
-            try:
-                import setup_aws_sso
-            except ImportError:
-                # Metodo 3: Import dinamico dal path
-                import importlib.util
-                setup_file = os.path.join(os.path.dirname(__file__), 'setup_aws_sso.py')
-                if os.path.exists(setup_file):
-                    spec = importlib.util.spec_from_file_location("setup_aws_sso", setup_file)
-                    setup_aws_sso = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(setup_aws_sso)
-        
-        if setup_aws_sso is None:
-            raise ImportError("Impossibile importare setup_aws_sso")
-        
-        print("💡 Il modulo credential_manager non è disponibile o il path non è valido.")
-        print("🔧 Configurazione automatica in corso...")
-        print()
-        
-        setup_success = setup_aws_sso.run_setup()
-        
-        if setup_success:
-            print("🔄 Riprovo a caricare il modulo credential_manager...")
-            
-            # IMPORTANTE: Dopo un setup completato, ricarica il nuovo path dal file .env aggiornato
-            print("📄 Ricaricamento configurazione aggiornata...")
-            
-            # Ricarica il file .env per ottenere il nuovo path
-            env_file = find_env_file()
-            if env_file:
-                print(f"📄 Ricaricamento da {env_file}")
-                with open(env_file, 'r') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            key, value = line.split('=', 1)
-                            if key.strip() == 'AWS_SSO_CREDENTIAL_MANAGER_PATH':
-                                new_aws_sso_path = value.strip()
-                                print(f"🔄 Nuovo path caricato: {new_aws_sso_path}")
-                                
-                                # Aggiorna il path nel sys.path se valido
-                                if os.path.exists(new_aws_sso_path):
-                                    # Rimuovi il vecchio path se esistente
-                                    if aws_sso_path and aws_sso_path in sys.path:
-                                        sys.path.remove(aws_sso_path)
-                                    
-                                    # Aggiungi il nuovo path
-                                    if new_aws_sso_path not in sys.path:
-                                        sys.path.insert(0, new_aws_sso_path)
-                                    
-                                    # Aggiorna la variabile globale
-                                    globals()['aws_sso_path'] = new_aws_sso_path
-                                    os.environ['AWS_SSO_CREDENTIAL_MANAGER_PATH'] = new_aws_sso_path
-                                    
-                                    print(f"✅ Path aggiornato nel sistema: {new_aws_sso_path}")
-                                else:
-                                    print(f"❌ Il nuovo path non è valido: {new_aws_sso_path}")
-                                break
-            
-            # Riprova l'import dopo il setup
-            try:
-                # Forza la rimozione del modulo dalla cache se già caricato
-                if 'credential_manager' in sys.modules:
-                    del sys.modules['credential_manager']
-                    print("🔄 Cache modulo credential_manager pulita")
-                
-                from credential_manager import AWSCredentialManager
-                _USE_SSO = True
-                globals()['_USE_SSO'] = True
-                print("✅ AWS SSO Credential Manager ora disponibile!")
-            except ImportError:
-                print("❌ Il modulo credential_manager non è ancora disponibile.")
-                print("🔧 Potrebbe essere necessario riavviare il programma.")
-        else:
-            print("❌ Setup automatico non completato.")
-            print("⚠️ La libreria continuerà senza supporto AWS SSO.")
-            
-    except ImportError:
-        print("❌ Setup automatico non disponibile.")
-        print("💡 Per abilitare AWS SSO:")
-        print("   1. Installa aws-sso-credential-manager")
-        print("   2. Imposta AWS_SSO_CREDENTIAL_MANAGER_PATH")
-        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
-    except Exception as setup_error:
-        print(f"❌ Errore durante il setup automatico: {setup_error}")
-        print("💡 Per abilitare AWS SSO:")
-        print("   1. Installa aws-sso-credential-manager")
-        print("   2. Imposta AWS_SSO_CREDENTIAL_MANAGER_PATH")
-        print("   3. Oppure esegui: python3 -m library.setup_aws_sso")
 
 def is_wsl(v: str = platform.uname().release) -> int:
     """
@@ -963,21 +800,56 @@ def get_nested_value(d, path):
     return d
 
 def select_entry(items, key_path="sw_thing_type.S"):
-    print("Seleziona un elemento da visualizzare e/o modificare:")
+    """Seleziona un elemento da una lista. Usa inquirer se disponibile, altrimenti fallback numerico."""
     path = key_path.split('.')
-    for i, item in enumerate(items, start=1):
+    labels = []
+    for item in items:
         value = get_nested_value(item, path)
         label = value if value is not None else "N/A"
-        print(f"{i}. {label}")
+        labels.append(label)
 
-    choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    # Prova inquirer
+    if INQUIRER_AVAILABLE and labels:
+        try:
+            questions = [inquirer.List('choice', message='Seleziona un elemento da visualizzare e/o modificare:', choices=labels, carousel=True)]
+            answers = inquirer.prompt(questions)
+            if answers and 'choice' in answers:
+                sel = answers['choice']
+                idx = labels.index(sel)
+                return items[idx]
+        except Exception:
+            pass
+
+    # Fallback numerico
+    print("Seleziona un elemento da visualizzare e/o modificare:")
+    for i, lab in enumerate(labels, start=1):
+        print(f"{i}. {lab}")
+    try:
+        choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    except Exception:
+        return None
     return items[choice] if 0 <= choice < len(items) else None
 
 def select_thing_entry(items):
+    labels = [item.get('sw_thing_type', {}).get('S', 'N/A') for item in items]
+    if INQUIRER_AVAILABLE and labels:
+        try:
+            questions = [inquirer.List('choice', message='Seleziona un elemento da visualizzare e/o modificare:', choices=labels, carousel=True)]
+            answers = inquirer.prompt(questions)
+            if answers and 'choice' in answers:
+                sel = answers['choice']
+                idx = labels.index(sel)
+                return items[idx]
+        except Exception:
+            pass
+
     print("Seleziona un elemento da visualizzare e/o modificare:")
-    for i, item in enumerate(items):
-        print(f"{i + 1}. {item['sw_thing_type']['S']}")
-    choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    for i, lab in enumerate(labels, start=1):
+        print(f"{i}. {lab}")
+    try:
+        choice = int(input("Inserisci il numero corrispondente: ")) - 1
+    except Exception:
+        return None
     return items[choice] if 0 <= choice < len(items) else None
 
 def choose_dynamodb_item(table_name, items):
