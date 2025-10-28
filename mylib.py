@@ -19,12 +19,67 @@ try:
 except Exception:
     INQUIRER_AVAILABLE = False
 
-# Aggiungi il path per aws-sso-credential-manager
-aws_sso_path = "/Users/francescofreiles/Library/CloudStorage/OneDrive-Personal/Devel/GIT/aws-sso-credential-manager"
-if aws_sso_path not in sys.path:
+# Funzione di utilità: ricerca file .env risalendo la gerarchia
+def find_env_file():
+    """Cerca il file .env partendo dalla directory corrente e risalendo fino alla directory padre"""
+    current_dir = os.getcwd()
+    search_dirs = [
+        current_dir,
+        os.path.dirname(__file__),
+        os.path.dirname(os.path.dirname(__file__)),
+    ]
+    parent_dir = os.path.dirname(current_dir)
+    if parent_dir != current_dir:
+        search_dirs.append(parent_dir)
+
+    for search_dir in search_dirs:
+        env_file = os.path.join(search_dir, '.env')
+        if os.path.exists(env_file):
+            return env_file
+    return None
+
+
+# Carica variabili dal file .env (se presente)
+env_file = find_env_file()
+if env_file:
+    try:
+        print(f"📄 Caricamento configurazione da {env_file}")
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ[key.strip()] = value.strip()
+    except Exception:
+        # Non bloccare l'import se il .env è malformato
+        pass
+
+# Determina il path di aws-sso-credential-manager (variabile d'ambiente o percorsi comuni)
+aws_sso_path = os.environ.get('AWS_SSO_CREDENTIAL_MANAGER_PATH')
+if not aws_sso_path:
+    common_paths = [
+        "./aws-sso-credential-manager",
+        "../aws-sso-credential-manager",
+        "~/tools/aws-sso-credential-manager",
+        "/opt/aws-sso-credential-manager",
+        "/usr/local/bin/aws-sso-credential-manager",
+    ]
+    for path in common_paths:
+        expanded_path = os.path.expanduser(path)
+        if os.path.exists(expanded_path):
+            aws_sso_path = expanded_path
+            print(f"🔍 AWS SSO Credential Manager trovato in: {aws_sso_path}")
+            break
+
+    if not aws_sso_path:
+        print("⚠️ AWS SSO Credential Manager non trovato.")
+        print("💡 Imposta AWS_SSO_CREDENTIAL_MANAGER_PATH oppure crea un .env con il path")
+
+if aws_sso_path and aws_sso_path not in sys.path:
     sys.path.insert(0, aws_sso_path)
 
-# Importa direttamente la classe AWSCredentialManager
+
+# Importa direttamente la classe AWSCredentialManager, con fallback di setup automatico
 try:
     from credential_manager import AWSCredentialManager
     _USE_SSO = True
@@ -32,6 +87,69 @@ try:
 except ImportError as e:
     print(f"⚠️ AWS SSO non disponibile: {e}")
     _USE_SSO = False
+
+    # Proviamo un setup automatico simile a quello usato in consumer che includono setup_aws_sso
+    try:
+        setup_aws_sso = None
+        # Tentativi multipli di import per essere robusti
+        try:
+            from . import setup_aws_sso
+        except Exception:
+            try:
+                import setup_aws_sso
+            except Exception:
+                # Import dinamico dal file presente nella stessa directory di questo modulo
+                import importlib.util
+                setup_file = os.path.join(os.path.dirname(__file__), 'setup_aws_sso.py')
+                if os.path.exists(setup_file):
+                    spec = importlib.util.spec_from_file_location('setup_aws_sso', setup_file)
+                    setup_aws_sso = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(setup_aws_sso)
+
+        if setup_aws_sso is None:
+            raise ImportError('Impossibile importare setup_aws_sso')
+
+        print('🔧 Tentativo di configurazione automatica di aws-sso-credential-manager...')
+        setup_success = False
+        try:
+            setup_success = setup_aws_sso.run_setup()
+        except Exception:
+            # run_setup può non esistere o fallire; non blocchiamo l'import
+            setup_success = False
+
+        if setup_success:
+            # Ricarica eventuale .env aggiornato
+            env_file = find_env_file()
+            if env_file:
+                with open(env_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, value = line.split('=', 1)
+                            if key.strip() == 'AWS_SSO_CREDENTIAL_MANAGER_PATH':
+                                new_aws_sso_path = value.strip()
+                                if os.path.exists(new_aws_sso_path):
+                                    if aws_sso_path and aws_sso_path in sys.path:
+                                        try:
+                                            sys.path.remove(aws_sso_path)
+                                        except Exception:
+                                            pass
+                                    if new_aws_sso_path not in sys.path:
+                                        sys.path.insert(0, new_aws_sso_path)
+                                    aws_sso_path = new_aws_sso_path
+
+            # Riproviamo l'import
+            try:
+                if 'credential_manager' in sys.modules:
+                    del sys.modules['credential_manager']
+                from credential_manager import AWSCredentialManager
+                _USE_SSO = True
+                print('✅ AWS SSO Credential Manager ora disponibile!')
+            except Exception:
+                print('❌ Il modulo credential_manager non è ancora disponibile dopo il setup.')
+    except Exception:
+        # Non forziamo un'eccezione all'import del modulo library: semplicemente proseguiamo senza SSO
+        _USE_SSO = False
 
 def is_wsl(v: str = platform.uname().release) -> int:
     """

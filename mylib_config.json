@@ -1,0 +1,16 @@
+{
+  "paths": {
+    "aws_sso_credential_manager": "/Users/francescofreiles/Library/CloudStorage/OneDrive-Personal/Devel/GIT/aws-sso-credential-manager",
+    "aws_credentials_dir": ".aws",
+    "aws_credentials_file": "credentials"
+  },
+  "aws": {
+    "default_region": "eu-central-1",
+    "account_id_length": 12,
+    "min_account_id_length": 10
+  },
+  "timeouts": {
+    "file_dialog_delay": 3,
+    "sso_session_timeout": 120
+  }
+}

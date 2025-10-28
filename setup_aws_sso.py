@@ -78,19 +78,61 @@ def select_aws_sso_path_manually():
         return None
 
 def create_env_file(aws_sso_path):
-    """Crea un file .env nella directory del progetto (root del repository)"""
-    # Determina la directory root del progetto partendo dalla directory della libreria
-    library_dir = Path(__file__).parent
-    project_root = library_dir.parent  # La directory padre di library/
-    
+    """Crea un file .env nella directory del progetto (root del repository).
+
+    Cerca una directory root ragionevole (quella che contiene `library/` o `src/`).
+    """
+    current_dir = Path.cwd()
+    script_dir = Path(__file__).parent
+
+    potential_roots = [
+        script_dir,
+        current_dir,
+        script_dir.parent,
+        current_dir.parent,
+    ]
+
+    project_root = None
+    for root in potential_roots:
+        if (root / 'library').exists() or (root / 'src').exists():
+            project_root = root
+            break
+
+    if not project_root:
+        project_root = script_dir
+
     env_file_path = project_root / '.env'
-    
+
     with open(env_file_path, 'w') as f:
         f.write('# AWS SSO Credential Manager Configuration\n')
         f.write('# Generato automaticamente da setup_aws_sso.py\n')
         f.write(f'AWS_SSO_CREDENTIAL_MANAGER_PATH={aws_sso_path}\n')
-    
+
+    print(f"✅ File .env creato in: {env_file_path}")
+    print(f"📂 Directory del progetto: {project_root}")
     return str(env_file_path)
+
+
+def setup_environment_variable(aws_sso_path, permanent=True):
+    """Imposta la variabile d'ambiente; se permanent=True, aggiunge al profilo shell dell'utente."""
+    home = Path.home()
+    if permanent:
+        shell_files = [home / '.zshrc', home / '.bashrc', home / '.bash_profile', home / '.profile']
+        shell_file = None
+        for file in shell_files:
+            if file.exists():
+                shell_file = file
+                break
+        if not shell_file:
+            shell_file = home / '.profile'
+        with open(shell_file, 'a') as f:
+            f.write('\n# AWS SSO Credential Manager Path\n')
+            f.write(f'export AWS_SSO_CREDENTIAL_MANAGER_PATH="{aws_sso_path}"\n')
+        print(f"✅ Variabile d'ambiente aggiunta a {shell_file}")
+        print(f"🔄 Riavvia il terminale o esegui: source {shell_file}")
+    else:
+        os.environ['AWS_SSO_CREDENTIAL_MANAGER_PATH'] = aws_sso_path
+        print("✅ Variabile d'ambiente impostata per questa sessione")
 
 def run_setup():
     """Esegue il setup automatico e restituisce True se completato con successo"""
@@ -144,7 +186,6 @@ def run_setup():
     if auto_path:
         print(f"✅ Trovato automaticamente: {auto_path}")
         response = input("Usare questo path? (y/n): ").strip().lower()
-        
         if response in ['y', 'yes', 'si', 's']:
             aws_sso_path = auto_path
         else:
@@ -152,26 +193,31 @@ def run_setup():
     
     # Se non trovato automaticamente o rifiutato dall'utente
     if not aws_sso_path:
-        print("❌ aws-sso-credential-manager non trovato automaticamente.")
+        print("ℹ️ aws-sso-credential-manager non trovato automaticamente.")
         print()
-        print("💡 Opzioni disponibili:")
-        print("   1. Seleziona manualmente la cartella (tramite dialog)")
-        print("   2. Installa aws-sso-credential-manager nella directory del progetto")
-        print("   3. Installa aws-sso-credential-manager in ~/tools/")
-        print("   4. Imposta manualmente la variabile d'ambiente AWS_SSO_CREDENTIAL_MANAGER_PATH")
+        print("Opzioni disponibili:")
+        print("  1) Seleziona manualmente la cartella (GUI, se disponibile)")
+        print("  2) Inserisci manualmente il path via input")
+        print("  3) Annulla setup")
         print()
-        
-        choice = input("Vuoi selezionare manualmente la cartella? (y/n): ").strip().lower()
-        
-        if choice in ['y', 'yes', 'si', 's']:
+
+        choice = input("Scelta (1-3): ").strip()
+
+        if choice == '1':
             print("� Apertura dialog per selezione manuale...")
             manual_path = select_aws_sso_path_manually()
-            
             if manual_path:
                 print(f"✅ Cartella selezionata: {manual_path}")
                 aws_sso_path = manual_path
             else:
                 print("❌ Selezione manuale fallita o annullata.")
+                return False
+        elif choice == '2':
+            user_path = input("Inserisci il path completo di aws-sso-credential-manager: ").strip()
+            if user_path:
+                aws_sso_path = str(Path(user_path).expanduser().resolve())
+            else:
+                print("❌ Path non fornito. Setup annullato.")
                 return False
         else:
             print("❌ Setup annullato dall'utente.")
@@ -193,15 +239,30 @@ def run_setup():
                 print("🔄 Aggiornamento file .env esistente...")
             else:
                 print("📄 Creazione nuovo file .env...")
-                
-            env_file_result = create_env_file(aws_sso_path)
-            print(f"✅ File .env aggiornato in: {env_file_result}")
+
+            # Offri opzioni di configurazione: variabile permanente, sessione, o .env
+            print()
+            print("Scegli come configurare il path:")
+            print("  1) Variabile d'ambiente permanente (aggiunta al profilo shell dell'utente)")
+            print("  2) Solo per questa sessione")
+            print("  3) Crea/aggiorna file .env nella root del progetto (raccomandato per submodule)")
+            print()
+            cfg_choice = input("Scelta (1-3): ").strip()
+
+            if cfg_choice == '1':
+                setup_environment_variable(aws_sso_path, permanent=True)
+            elif cfg_choice == '2':
+                setup_environment_variable(aws_sso_path, permanent=False)
+            else:
+                env_file_result = create_env_file(aws_sso_path)
+                print(f"✅ File .env aggiornato in: {env_file_result}")
+
             print("🎉 Setup completato con successo!")
             print()
             print("📋 La libreria riproverà automaticamente a caricare il modulo.")
             return True
         except Exception as e:
-            print(f"❌ Errore durante la creazione del file .env: {e}")
+            print(f"❌ Errore durante la configurazione: {e}")
             return False
     
     return False
